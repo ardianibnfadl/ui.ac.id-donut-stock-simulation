@@ -113,74 +113,45 @@ ui <- dashboardPage(
   skin = "black",
   dashboardHeader(title = tags$span(style = "font-size: 16px;", "Donut 🍩 Stock Simulation")),
   dashboardSidebar(
-    sidebarMenu(
-      id = "sidebar_tabs",
-      menuItem("Simulation", tabName = "sim", icon = icon("chart-line")),
-      menuItem("README", tabName = "readme", icon = icon("book-open"))
-    ),
-    conditionalPanel(
-      condition = "input.sidebar_tabs === 'sim'",
-      br(),
-      sliderInput("max_dozens", "Max stock to test (in dozens)", min = 5, max = 200, value = 100, step = 5),
-      sliderInput("trials", "Monte Carlo trials per test", min = 50, max = 1000, value = 100, step = 50),
-      numericInput("days", "Horizon (days)", value = 5, min = 1, max = 30, step = 1),
-      numericInput("price", "Price per dozen (IDR)", value = 80000, min = 0, step = 5000),
-      numericInput("cost", "Production cost per dozen (IDR)", value = 55000, min = 0, step = 5000),
-      numericInput("salvage", "Salvage price per dozen (IDR)", value = 40000, min = 0, step = 5000),
-      tags$div(
-        class = "btn-group",
-        actionButton("reset_params", NULL, icon = icon("undo"), class = "btn-secondary", title = "Reset to defaults"),
-        actionButton("run", "Run Simulation", icon = icon("play"), class = "btn-primary")
-      )
+    br(),
+    sliderInput("max_dozens", "Max stock to test (in dozens)", min = 5, max = 200, value = 100, step = 5),
+    sliderInput("trials", "Monte Carlo trials per test", min = 50, max = 1000, value = 100, step = 50),
+    numericInput("days", "Horizon (days)", value = 5, min = 1, max = 30, step = 1),
+    numericInput("price", "Price per dozen (IDR)", value = 80000, min = 0, step = 5000),
+    numericInput("cost", "Production cost per dozen (IDR)", value = 55000, min = 0, step = 5000),
+    numericInput("salvage", "Salvage price per dozen (IDR)", value = 40000, min = 0, step = 5000),
+    tags$div(
+      class = "btn-group",
+      actionButton("reset_params", NULL, icon = icon("undo"), class = "btn-secondary", title = "Reset to defaults"),
+      actionButton("run", "Run Simulation", icon = icon("play"), class = "btn-primary")
     )
   ),
   dashboardBody(
-    tabItems(
-      tabItem(
-        tabName = "sim",
-        fluidRow(
-          valueBoxOutput("vb_bestProduction", width = 4),
-          valueBoxOutput("vb_bestProfit", width = 4),
-          valueBoxOutput("vb_bestLeftover", width = 4)
-        ),
-        fluidRow(
-          box(
-            width = 12,
-            title = "Profit vs Production",
-          status = "primary",
-          solidHeader = TRUE,
-          plotlyOutput("plot_profit")
-          )
-        ),
-        fluidRow(
-        box(
-          width = 12,
-          title = "Monte Carlo Averages per Stock Alternative",
-          status = "primary",
-          solidHeader = TRUE,
-          collapsible = TRUE,
-          p("Each row displays the Monte Carlo averages for a tested stock level (in dozens)."),
-          div(
-            style = "overflow-x: auto;",
-            DTOutput("table_summary")
-          )
-        )
-        )
-      ),
-      tabItem(
-        tabName = "readme",
-        fluidRow(
-          box(
-            title = "Project README",
-            width = 12,
-            status = "primary",
-            solidHeader = TRUE,
-            collapsible = TRUE,
-            div(
-              style = "padding: 0 24px;",
-              includeMarkdown("README.md")
-            )
-          )
+    fluidRow(
+      valueBoxOutput("vb_bestProduction", width = 4),
+      valueBoxOutput("vb_bestProfit", width = 4),
+      valueBoxOutput("vb_bestLeftover", width = 4)
+    ),
+    fluidRow(
+      box(
+        width = 12,
+        title = "Profit vs Production",
+        status = "primary",
+        solidHeader = TRUE,
+        plotlyOutput("plot_profit")
+      )
+    ),
+    fluidRow(
+      box(
+        width = 12,
+        title = "Monte Carlo Averages per Stock Alternative",
+        status = "primary",
+        solidHeader = TRUE,
+        collapsible = TRUE,
+        p("Each row displays the Monte Carlo averages for a tested stock level (in dozens)."),
+        div(
+          style = "overflow-x: auto;",
+          DTOutput("table_summary")
         )
       )
     )

@@ -372,6 +372,7 @@ server <- function(input, output, session) {
       sprintf("mean_%s_day_total_cost", days_label),
       sprintf("mean_%s_day_avg_leftover", days_label)
     )
+    best_stock_value <- best_row()$dozen_count
     currency_cols <- colnames(df_display)[c(2,4,5,6,7)]
     leftover_col <- tail(colnames(df_display), 1)
     datatable(
@@ -389,12 +390,10 @@ server <- function(input, output, session) {
       formatCurrency(currency_cols, currency = "", digits = 0, interval = 3, mark = ",") %>%
       formatRound(leftover_col, digits = 0) %>%
       formatStyle(
-        columns = "stock_candidate",
+        columns = names(df_display),
+        valueColumns = "stock_candidate",
         target = "row",
-        backgroundColor = styleEqual(
-          levels = c(best_stock_value),
-          values = c("#e0f3db")
-        )
+        backgroundColor = styleEqual(best_stock_value, "#e0f3db")
       )
   })
 }

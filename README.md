@@ -10,12 +10,22 @@ Seorang manajer toko roti perlu merencanakan produksi donat hariannya agar tidak
 
 ### a. Distribusi Statistik
 1. Pelanggan per hari:
-Jumlah pelanggan    8 orang    10 orang    12 orang    14 orang
-Probabilitas        0.35       0.30        0.25        0.10
+
+   | Jumlah pelanggan | Probabilitas |
+   | --- | --- |
+   | 8 orang | 0.35 |
+   | 10 orang | 0.30 |
+   | 12 orang | 0.25 |
+   | 14 orang | 0.10 |
 
 2. Jumlah donat yang dibeli per pelanggan
-Jumlah Donat    1 lusin    2 lusin    3 lusin    4 lusin
-Probabilitas    0.40       0.30       0.20       0.10
+
+   | Jumlah donat | Probabilitas |
+   | --- | --- |
+   | 1 lusin | 0.40 |
+   | 2 lusin | 0.30 |
+   | 3 lusin | 0.20 |
+   | 4 lusin | 0.10 |
 
 ### b. Parameter Ekonomi
 1. Harga jual regular: Rp80.000/lusin
@@ -55,7 +65,7 @@ https://ardian.shinyapps.io/ui-ac-id-donut-stock-simulation
 https://github.com/ardianibnfadl/ui.ac.id-donut-stock-simulation.git
 
 ## 📊 Analisis
-![Hasil Simulasi](result.png)
+![Hasil Simulasi](./result.png)
 
 Simulasi Monte Carlo selama lima hari penjualan menunjukkan bahwa rata-rata profit meningkat seiring penambahan stok hingga mencapai titik optimum pada 20 lusin, lalu menurun secara konsisten setelahnya. Pola ini tampak jelas pada grafik Profit vs Production, yang berbentuk kurva naik-turun (concave curve), menandakan adanya batas produksi optimal sebelum kelebihan stok mulai menekan profit.
 

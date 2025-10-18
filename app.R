@@ -340,9 +340,10 @@ server <- function(input, output, session) {
   output$table_summary <- renderDT({
     req(results())
     df <- results()
-    df_display <- df
-    days_label <- active_days()
-    req(!is.null(days_label))
+   df_display <- df
+   days_label <- active_days()
+   req(!is.null(days_label))
+    best_stock_value <- best_row()$dozen_count
     df_display$stock_candidate <- df_display$dozen_count
     df_display$mean_profit <- round(df_display$mean_profit, 0)
     df_display$sd_profit   <- round(df_display$sd_profit, 0)
@@ -371,7 +372,6 @@ server <- function(input, output, session) {
       sprintf("mean_%s_day_total_cost", days_label),
       sprintf("mean_%s_day_avg_leftover", days_label)
     )
-    highlight_idx <- which(df$dozen_count == best_row()$dozen_count)[1]
     currency_cols <- colnames(df_display)[c(2,4,5,6,7)]
     leftover_col <- tail(colnames(df_display), 1)
     datatable(
@@ -389,11 +389,11 @@ server <- function(input, output, session) {
       formatCurrency(currency_cols, currency = "", digits = 0, interval = 3, mark = ",") %>%
       formatRound(leftover_col, digits = 0) %>%
       formatStyle(
-        columns = colnames(df_display),
+        columns = "stock_candidate",
         target = "row",
         backgroundColor = styleEqual(
-          df_display$stock_candidate,
-          ifelse(seq_len(nrow(df_display)) == highlight_idx, "#e0f3db", NA)
+          levels = c(best_stock_value),
+          values = c("#e0f3db")
         )
       )
   })

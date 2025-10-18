@@ -65,7 +65,7 @@ https://ardian.shinyapps.io/ui-ac-id-donut-stock-simulation
 https://github.com/ardianibnfadl/ui.ac.id-donut-stock-simulation.git
 
 ## 📊 Analisis
-![Hasil Simulasi](./result.png)
+![Hasil Simulasi](images/result.png)
 
 Simulasi Monte Carlo selama lima hari penjualan menunjukkan bahwa rata-rata profit meningkat seiring penambahan stok hingga mencapai titik optimum pada 20 lusin, lalu menurun secara konsisten setelahnya. Pola ini tampak jelas pada grafik Profit vs Production, yang berbentuk kurva naik-turun (concave curve), menandakan adanya batas produksi optimal sebelum kelebihan stok mulai menekan profit.
 

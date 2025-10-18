@@ -2,7 +2,10 @@
 # Used libraries
 # -----------------------------
 library(shiny)
+library(dplyr)
 library(shinydashboard)
+library(plotly)
+library(DT)
 
 # -----------------------------
 # Distributions
@@ -21,32 +24,32 @@ sample_customers <- function() {
 }
 
 sample_orders <- function(n) {
-  # dozen of donuts count per customer
+  # dozen count per customer
   sample(dozen_order_per_cust, size = n, replace = TRUE, prob = dozen_order_per_cust_probs)
 }
 
 # -----------------------------
-# Simulate one day for a given Q
+# Simulate one day for a given production level (in dozens)
 # -----------------------------
-simulate_day <- function(Q,
+simulate_day <- function(dozen_count,
                          price   = 80000,
                          cost    = 55000,
                          salvage = 40000) {
   n_cust  <- sample_customers()
-  demand  <- sum(sample_orders(n_cust))  # Total demand in dozen
-  sold    <- min(demand, Q)
-  leftover <- max(Q - demand, 0)
+  demand  <- sum(sample_orders(n_cust))  # Total demand in dozens
+  sold    <- min(demand, dozen_count)
+  leftover <- max(dozen_count - demand, 0)
   revenue  <- price * sold + salvage * leftover
-  profit   <- revenue - cost * Q
+  profit   <- revenue - cost * dozen_count
   
   data.frame(
     n_customers = n_cust,
     demand_dozens = demand,
-    produced_Q = Q,
+    produced_dozens = dozen_count,
     sold_dozens = sold,
     leftover_dozens = leftover,
     revenue = revenue,
-    cost = cost * Q,
+    cost = cost * dozen_count,
     profit = profit
   )
 }
@@ -54,44 +57,52 @@ simulate_day <- function(Q,
 # -----------------------------
 # Simulate N days (default 5)
 # -----------------------------
-simulate_days <- function(Q, days = 5,
+simulate_days <- function(dozen_count, days = 5,
                           price   = 80000,
                           cost    = 55000,
                           salvage = 40000) {
   do.call(rbind, lapply(1:days, function(d) {
-    out <- simulate_day(Q, price, cost, salvage)
+    out <- simulate_day(dozen_count, price, cost, salvage)
     out$day <- d
     out
   }))
 }
 
 # -----------------------------
-# Monte Carlo to evaluate Q
+# Monte Carlo to evaluate production levels
 # -----------------------------
-evaluate_Q <- function(Q,
-                       days = 5,
-                       replications = 200,
-                       price = 80000,
-                       cost = 55000,
-                       salvage = 40000) {
-  # Return mean total profit across 5 days, service level, expected leftover per day
-  profits <- numeric(replications)
-  svc_hit <- numeric(replications)  # proportion of days where D <= Q
-  left_avg <- numeric(replications)
+evaluate_dozens <- function(dozen_count,
+                            days = 5,
+                            trials = 200,
+                            price = 80000,
+                            cost = 55000,
+                            salvage = 40000) {
+  # Kembalikan metrik rata-rata (profit, komponen pendapatan/biaya, dan leftover harian)
+  profits <- numeric(trials)
+  left_avg <- numeric(trials)
+  total_revenue_totals <- numeric(trials)
+  regular_revenue_totals <- numeric(trials)
+  salvage_revenue_totals <- numeric(trials)
+  total_cost_totals <- numeric(trials)
   
-  for (r in 1:replications) {
-    df <- simulate_days(Q, days, price, cost, salvage)
+  for (r in 1:trials) {
+    df <- simulate_days(dozen_count, days, price, cost, salvage)
     profits[r] <- sum(df$profit)
-    # daily service level (D <= Q)
-    svc_hit[r] <- mean(df$demand_dozens <= Q)
+    total_revenue_totals[r] <- sum(df$revenue)
+    regular_revenue_totals[r] <- price * sum(df$sold_dozens)
+    salvage_revenue_totals[r] <- salvage * sum(df$leftover_dozens)
+    total_cost_totals[r] <- sum(df$cost)
     left_avg[r] <- mean(df$leftover_dozens)
   }
   data.frame(
-    Q = Q,
-    mean_profit_5d = mean(profits),
-    sd_profit_5d   = sd(profits),
-    service_level  = mean(svc_hit),
-    avg_leftover_per_day = mean(left_avg)
+    dozen_count = dozen_count,
+    mean_profit = mean(profits),
+    sd_profit   = sd(profits),
+    mean_total_revenue = mean(total_revenue_totals),
+    mean_regular_revenue = mean(regular_revenue_totals),
+    mean_salvage_revenue = mean(salvage_revenue_totals),
+    mean_total_cost = mean(total_cost_totals),
+    mean_avg_leftover = mean(left_avg)
   )
 }
 
@@ -110,14 +121,17 @@ ui <- dashboardPage(
     conditionalPanel(
       condition = "input.sidebar_tabs === 'sim'",
       br(),
-      sliderInput("Qmax", "Max Q (dozens)", min = 20, max = 200, value = 120, step = 5),
-      sliderInput("rep", "Monte Carlo replications", min = 50, max = 1000, value = 300, step = 50),
+      sliderInput("max_dozens", "Max stock to test (in dozens)", min = 5, max = 200, value = 100, step = 5),
+      sliderInput("trials", "Monte Carlo trials per test", min = 50, max = 1000, value = 100, step = 50),
       numericInput("days", "Horizon (days)", value = 5, min = 1, max = 30, step = 1),
       numericInput("price", "Price per dozen (IDR)", value = 80000, min = 0, step = 5000),
       numericInput("cost", "Production cost per dozen (IDR)", value = 55000, min = 0, step = 5000),
       numericInput("salvage", "Salvage price per dozen (IDR)", value = 40000, min = 0, step = 5000),
-      numericInput("seed", "Seed (optional)", value = 123, min = 0, step = 1),
-      actionButton("run", "Run Simulation", icon = icon("play"))
+      tags$div(
+        class = "btn-group",
+        actionButton("reset_params", NULL, icon = icon("undo"), class = "btn-secondary", title = "Reset to defaults"),
+        actionButton("run", "Run Simulation", icon = icon("play"), class = "btn-primary")
+      )
     )
   ),
   dashboardBody(
@@ -125,34 +139,47 @@ ui <- dashboardPage(
       tabItem(
         tabName = "sim",
         fluidRow(
-          valueBoxOutput("vb_bestQ", width = 4),
+          valueBoxOutput("vb_bestProduction", width = 4),
           valueBoxOutput("vb_bestProfit", width = 4),
-          valueBoxOutput("vb_bestSvc", width = 4)
+          valueBoxOutput("vb_bestLeftover", width = 4)
         ),
-        tabBox(
-          width = 12,
-          id = "tabsim",
-          tabPanel(
-            "Profit vs Q",
-            plotOutput("plot_profit"),
-            br(),
-            tableOutput("table_best_row")
-          ),
-          tabPanel(
-            "Representative Run (5 days)",
-            p("This table shows a single representative run for Q* (not the Monte Carlo average)."),
-            tableOutput("table_run")
+        fluidRow(
+          box(
+            width = 12,
+            title = "Profit vs Production",
+          status = "primary",
+          solidHeader = TRUE,
+          plotlyOutput("plot_profit")
           )
+        ),
+        fluidRow(
+        box(
+          width = 12,
+          title = "Monte Carlo Averages per Stock Alternative",
+          status = "primary",
+          solidHeader = TRUE,
+          collapsible = TRUE,
+          p("Each row displays the Monte Carlo averages for a tested stock level (in dozens)."),
+          div(
+            style = "overflow-x: auto;",
+            DTOutput("table_summary")
+          )
+        )
         )
       ),
       tabItem(
         tabName = "readme",
         fluidRow(
           box(
-            title = NULL,
+            title = "Project README",
             width = 12,
             status = "primary",
-            column(includeMarkdown("README.md"), width = 12)
+            solidHeader = TRUE,
+            collapsible = TRUE,
+            div(
+              style = "padding: 0 24px;",
+              includeMarkdown("README.md")
+            )
           )
         )
       )
@@ -164,37 +191,43 @@ ui <- dashboardPage(
 # Server
 # -----------------------------
 server <- function(input, output, session) {
-  observeEvent(input$run, {
-    if (!is.na(input$seed)) set.seed(input$seed)
+  active_days <- reactiveVal(NULL)
+  observeEvent(input$reset_params, {
+    updateSliderInput(session, "max_dozens", value = 100)
+    updateSliderInput(session, "trials", value = 100)
+    updateNumericInput(session, "days", value = 5)
+    updateNumericInput(session, "price", value = 80000)
+    updateNumericInput(session, "cost", value = 55000)
+    updateNumericInput(session, "salvage", value = 40000)
   })
   
   results <- eventReactive(input$run, {
-    if (!is.na(input$seed)) set.seed(input$seed)
-    # Q grid in multiples of 5
-    Qs <- seq(0, input$Qmax, by = 5)
-    out <- do.call(rbind, lapply(Qs, function(Q) {
-      evaluate_Q(Q,
-                 days = input$days,
-                 replications = input$rep,
-                 price = input$price,
-                 cost = input$cost,
-                 salvage = input$salvage)
+    # grid of stock levels (dozens) in multiples of 5 to test
+    dozens_grid <- seq(5, input$max_dozens, by = 5)
+    active_days(input$days)
+    out <- do.call(rbind, lapply(dozens_grid, function(dozens) {
+      evaluate_dozens(dozens,
+                      days = input$days,
+                      trials = input$trials,
+                      price = input$price,
+                      cost = input$cost,
+                      salvage = input$salvage)
     }))
     out
   }, ignoreInit = TRUE)
   
   best_row <- reactive({
     req(results())
-    # choose the Q with the highest 5-day mean profit; tie-breaker uses the smallest Q
+    # choose the production level with the highest mean profit; tie-breaker uses the smallest dozen count
     res <- results()
-    res[order(-res$mean_profit_5d, res$Q), ][1, , drop = FALSE]
+    res[order(-res$mean_profit, res$dozen_count), ][1, , drop = FALSE]
   })
   
-  output$vb_bestQ <- renderValueBox({
+  output$vb_bestProduction <- renderValueBox({
     req(best_row())
     valueBox(
-      value = paste0(best_row()$Q, " dozens"),
-      subtitle = "Q* (multiples of 5) - Recommended",
+      value = paste0(best_row()$dozen_count, " dozens"),
+      subtitle = "Recommended stock",
       icon = icon("thumbs-up"),
       color = "teal"
     )
@@ -202,57 +235,168 @@ server <- function(input, output, session) {
   
   output$vb_bestProfit <- renderValueBox({
     req(best_row())
+    days_label <- active_days()
+    req(!is.null(days_label))
     valueBox(
-      value = paste0("IDR ", format(round(best_row()$mean_profit_5d, 0), big.mark = ".")),
-      subtitle = paste0("Total Mean Profit for ", input$days, " days"),
+      value = paste0("IDR ", format(round(best_row()$mean_profit, 0), big.mark = ",", decimal.mark = ".", trim = TRUE)),
+      subtitle = paste0("Mean ", days_label, "-day Profit"),
       icon = icon("money-bill-wave"),
       color = "olive"
     )
   })
-  
-  output$vb_bestSvc <- renderValueBox({
+
+  output$vb_bestLeftover <- renderValueBox({
     req(best_row())
+    days_label <- active_days()
+    req(!is.null(days_label))
     valueBox(
-      value = paste0(round(100 * best_row()$service_level, 1), "%"),
-      subtitle = "Service Level (P[D <= Q] per day)",
-      icon = icon("check-circle"),
+      value = paste0(round(best_row()$mean_avg_leftover, 0), " dozens"),
+      subtitle = paste0("Mean ", days_label, "-day leftover"),
+      icon = icon("boxes-stacked"),
       color = "purple"
     )
   })
   
-  output$plot_profit <- renderPlot({
+  output$plot_profit <- renderPlotly({
     req(results(), best_row())
     res <- results()
-    plot(res$Q, res$mean_profit_5d,
-         type = "b", xlab = "Q (dozens, multiples of 5)",
-         ylab = paste0("Total Mean Profit for ", input$days, " days"),
-         main = "Profit vs Q (Monte Carlo)")
-    abline(v = best_row()$Q, lty = 2)
-  })
-  
-  output$table_best_row <- renderTable({
-    req(best_row())
-    br <- best_row()
-    br$mean_profit_5d <- round(br$mean_profit_5d, 0)
-    br$sd_profit_5d   <- round(br$sd_profit_5d, 0)
-    br$service_level  <- round(br$service_level, 4)
-    br$avg_leftover_per_day <- round(br$avg_leftover_per_day, 2)
-    br
-  })
-  
-  output$table_run <- renderTable({
-    req(best_row())
-    if (!is.na(input$seed)) set.seed(input$seed + 999)  # representative run separate from the evaluation
-    df <- simulate_days(
-      Q       = best_row()$Q,
-      days    = input$days,
-      price   = input$price,
-      cost    = input$cost,
-      salvage = input$salvage
+    days_label <- active_days()
+    req(!is.null(days_label))
+    hover_text <- sprintf(
+      "Stock: %d dozens<br>Mean %d-day profit: IDR %s<br>Avg leftover per day: %s dozens",
+      res$dozen_count,
+      days_label,
+      format(round(res$mean_profit, 0), big.mark = ",", decimal.mark = ".", trim = TRUE),
+      format(round(res$mean_avg_leftover, 0), nsmall = 0, big.mark = ",")
     )
-    df[, c("day","n_customers","demand_dozens","produced_Q",
-           "sold_dozens","leftover_dozens","revenue","cost","profit")]
+    best_stock <- best_row()$dozen_count
+    highlight_data <- res[res$dozen_count == best_stock, , drop = FALSE]
+    highlight_text <- hover_text[res$dozen_count == best_stock]
+    if (length(highlight_text) == 0) {
+      highlight_text <- sprintf(
+        "Stock: %d dozens<br>Mean %d-day profit: IDR %s<br>Avg leftover per day: %s dozens",
+        best_stock,
+        days_label,
+        format(round(best_row()$mean_profit, 0), big.mark = ",", decimal.mark = ".", trim = TRUE),
+        format(round(best_row()$mean_avg_leftover, 0), nsmall = 0, big.mark = ",")
+      )
+    }
+    
+    plot <- plot_ly(
+      res,
+      x = ~dozen_count,
+      y = ~mean_profit,
+      type = "scatter",
+      mode = "lines+markers",
+      text = hover_text,
+      hoverinfo = "text",
+      line = list(color = "#2C7BB6"),
+      marker = list(color = "#2C7BB6", size = 6),
+      name = "Stock alternatives"
+    )
+    
+    if (nrow(highlight_data) > 0) {
+      plot <- plot %>%
+        add_trace(
+          data = highlight_data,
+          x = ~dozen_count,
+          y = ~mean_profit,
+          type = "scatter",
+          mode = "markers",
+          text = highlight_text,
+          hoverinfo = "text",
+          marker = list(color = "#1B9E77", size = 10, symbol = "circle", line = list(color = "white", width = 1.5)),
+          showlegend = FALSE
+        )
+    }
+    
+    plot %>%
+      layout(
+        title = "Profit vs Production (Monte Carlo Average)",
+        xaxis = list(
+          title = "Stock (dozens)",
+          dtick = 5,
+          tick0 = min(res$dozen_count)
+        ),
+        yaxis = list(
+          title = paste0("Mean ", days_label, "-day Profit (IDR)")
+        ),
+        hovermode = "closest",
+        hoverlabel = list(bgcolor = "white"),
+        margin = list(l = 70, r = 30, b = 60, t = 60),
+        shapes = list(list(
+          type = "line",
+          x0 = best_stock,
+          x1 = best_stock,
+          y0 = min(res$mean_profit),
+          y1 = max(res$mean_profit),
+          xref = "x",
+          yref = "y",
+          line = list(color = "#1B9E77", dash = "dash")
+        ))
+      )
+  })
+  
+  output$table_summary <- renderDT({
+    req(results())
+    df <- results()
+    df_display <- df
+    days_label <- active_days()
+    req(!is.null(days_label))
+    df_display$stock_candidate <- df_display$dozen_count
+    df_display$mean_profit <- round(df_display$mean_profit, 0)
+    df_display$sd_profit   <- round(df_display$sd_profit, 0)
+    df_display$mean_total_revenue <- round(df_display$mean_total_revenue, 0)
+    df_display$mean_regular_revenue <- round(df_display$mean_regular_revenue, 0)
+    df_display$mean_salvage_revenue <- round(df_display$mean_salvage_revenue, 0)
+    df_display$mean_total_cost <- round(df_display$mean_total_cost, 0)
+    df_display$mean_avg_leftover <- round(df_display$mean_avg_leftover, 0)
+    df_display <- df_display[, c(
+      "stock_candidate",
+      "mean_profit",
+      "sd_profit",
+      "mean_total_revenue",
+      "mean_regular_revenue",
+      "mean_salvage_revenue",
+      "mean_total_cost",
+      "mean_avg_leftover"
+    )]
+    colnames(df_display) <- c(
+      "stock_candidate",
+      sprintf("mean_%s_day_profit", days_label),
+      sprintf("sd_%s_day_profit", days_label),
+      sprintf("mean_%s_day_total_revenue", days_label),
+      sprintf("mean_%s_day_regular_revenue", days_label),
+      sprintf("mean_%s_day_salvage_revenue", days_label),
+      sprintf("mean_%s_day_total_cost", days_label),
+      sprintf("mean_%s_day_avg_leftover", days_label)
+    )
+    highlight_idx <- which(df$dozen_count == best_row()$dozen_count)[1]
+    currency_cols <- colnames(df_display)[c(2,4,5,6,7)]
+    leftover_col <- tail(colnames(df_display), 1)
+    datatable(
+      df_display,
+      rownames = FALSE,
+      options = list(
+        dom = "ftp",
+        paging = TRUE,
+        pageLength = 10,
+        searching = FALSE,
+        order = list(list(0, "asc")),
+        scrollX = TRUE
+      )
+    ) %>%
+      formatCurrency(currency_cols, currency = "", digits = 0, interval = 3, mark = ",") %>%
+      formatRound(leftover_col, digits = 0) %>%
+      formatStyle(
+        columns = colnames(df_display),
+        target = "row",
+        backgroundColor = styleEqual(
+          df_display$stock_candidate,
+          ifelse(seq_len(nrow(df_display)) == highlight_idx, "#e0f3db", NA)
+        )
+      )
   })
 }
 
-shinyApp(ui, server)
+shinyApp(ui = ui, server = server)
